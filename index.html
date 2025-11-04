@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Simulador de Escalonamento de SO</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <h1>Simulador de Escalonamento de Processos </h1>
+
+    <div class="container">
+        <div class="configuracoes">
+            <h3>Configurações Globais</h3>
+            <label for="algoritmo">Algoritmo:</label>
+            <select id="algoritmo">
+                <option value="FIFO">FIFO</option>
+                <option value="SJF">SJF</option>
+                <option value="RR">Round-Robin</option>
+                <option value="EDF">EDF</option>
+                <option value="CFS">CFS-Sim </option>
+            </select>
+            
+            <label for="quantum">Quantum:</label>
+            <input type="number" id="quantum" value="2"> <label for="sobrecarga">Sobrecarga de Contexto (u.t.):</label>
+            <input type="number" id="sobrecarga" value="1"> <h3>Definição de Processos (JSON) </h3>
+<textarea id="processos-input" rows="10">
+{
+  "processos": [
+    {"id": "P1", "chegada": 0, "execucao": 5, "deadline": 8, "prioridade": 2},
+    {"id": "P2", "chegada": 1, "execucao": 4, "deadline": 12, "prioridade": 1},
+    {"id": "P3", "chegada": 3, "execucao": 6, "deadline": 14, "prioridade": 3}
+  ]
+}
+</textarea>
+<p style="font-size: 13px; color: #555; margin-top: -10px;">
+</p>
+            
+            <button id="iniciar-simulacao">Iniciar Simulação</button>
+        </div>
+
+        <div class="resultados">
+            <h2>Resultados</h2>
+            
+            <h3>Gráfico de Gantt </h3>
+            <div id="gantt-chart" class="gantt-container">
+                </div>
+            <div id="gantt-legend">
+                <div><span class="cor" style="background-color: #28a745;"></span> Execução</div>
+                <div><span class="cor" style="background-color: #dc3545;"></span> Sobrecarga de Contexto</div>
+                <div><span class="cor" style="background-color: #e9ecef; border: 1px dashed #ccc;"></span> Ocioso</div>
+                <div><span class="cor" style="background-color: #6c757d;"></span> Estouro de Deadline</div>
+            </div>
+
+            <h3>Tabela Final</h3>
+            <table id="tabela-resultados">
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Chegada</th>
+                        <th>Execução</th>
+                        <th>Deadline</th>
+                        <th>Prioridade</th>
+                        <th>Início(s)</th>
+                        <th>Término</th>
+                        <th>Espera</th>
+                        <th>Turnaround</th>
+                        <th>Deadline OK?</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    </tbody>
+            </table>
+
+            <h3>Métricas Globais</h3>
+            <div id="metricas-globais">
+                </div>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>
