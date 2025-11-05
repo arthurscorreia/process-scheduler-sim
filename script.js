@@ -150,6 +150,7 @@ class Simulador {
 
     /**
      * Manipulador: Processo terminou sua execução
+     * NOTA: NÃO chama iniciarTrocaContexto aqui — término NÃO é sobrecarga.
      */
     handleFimExecucao(processo) {
         processo.termino = this.tempoAtual;
@@ -172,18 +173,39 @@ class Simulador {
         this.processoNaCPU = null;
         this.cpuOciosa = true; // Libera a CPU para a troca de contexto
 
-        // Inicia a troca de contexto
-        this.iniciarTrocaContexto();
+        // Inicia a troca de contexto — MOD: passa o processo que foi interrompido
+        this.iniciarTrocaContexto(processo);
     }
 
     /**
      * Inicia a sobrecarga da troca de contexto
+     * MOD: recebe opcionalmente o processo interrompido (interrompido).
+     * Se recebido, marca a sobrecarga na linha desse processo (id = processo.id).
+     * Caso contrário, preserva comportamento antigo (id = 'SC').
      */
-    iniciarTrocaContexto() {
+    iniciarTrocaContexto(interrompido = null) {
         if (this.filaDeProntos.length > 0 && this.sobrecarga > 0) {
             this.totalTrocasContexto++;
             this.cpuOciosa = false; // CPU ocupada com a sobrecarga
-            this.logGantt.push({ id: 'SC', inicio: this.tempoAtual, fim: this.tempoAtual + this.sobrecarga, tipo: 'sobrecarga' });
+
+            if (interrompido && interrompido.id) {
+                // MOD: registrar sobrecarga na linha do processo interrompido
+                this.logGantt.push({
+                    id: interrompido.id, 
+                    inicio: this.tempoAtual, 
+                    fim: this.tempoAtual + this.sobrecarga, 
+                    tipo: 'sobrecarga' // Será pintado como gantt-sobrecarga (vermelho)
+                });
+            } else {
+                // fallback: bloco genérico SC (linha separada)
+                this.logGantt.push({ 
+                    id: 'SC', 
+                    inicio: this.tempoAtual, 
+                    fim: this.tempoAtual + this.sobrecarga, 
+                    tipo: 'sobrecarga' 
+                });
+            }
+
             this.adicionarEvento(this.tempoAtual + this.sobrecarga, 'FIM_SOBRECARGA', {});
         }
         // Se não houver sobrecarga, a CPU permanece ociosa e o loop chamará alocarCPU()
@@ -425,7 +447,7 @@ class Simulador {
             return numA - numB;
         });
 
-        linhas.push("OCIOSO"); 
+        // linhas.push("OCIOSO"); 
         const largura = tempoTotal * escala;
         const altura = linhas.length * escala;
         ganttContainer.style.position = "relative";
