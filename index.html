@@ -18,7 +18,7 @@
                 <option value="SJF">SJF</option>
                 <option value="RR">Round-Robin</option>
                 <option value="EDF">EDF</option>
-                <option value="CFS">CFS-Sim </option>
+                <option value="CFS">CFS</option>
             </select>
             
             <label for="quantum">Quantum:</label>
@@ -28,8 +28,8 @@
 {
   "processos": [
     {"id": "P1", "chegada": 0, "execucao": 5, "deadline": 8, "prioridade": 2},
-    {"id": "P2", "chegada": 1, "execucao": 4, "deadline": 12, "prioridade": 1},
-    {"id": "P3", "chegada": 3, "execucao": 6, "deadline": 14, "prioridade": 3}
+    {"id": "P2", "chegada": 0, "execucao": 4, "deadline": 12, "prioridade": 1},
+    {"id": "P3", "chegada": 0, "execucao": 6, "deadline": 14, "prioridade": 3}
   ]
 }
 </textarea>
@@ -65,7 +65,7 @@
                         <th>Término</th>
                         <th>Espera</th>
                         <th>Turnaround</th>
-                        <th>Deadline OK?</th>
+                        <th>Atendeu a Deadline</th>
                     </tr>
                 </thead>
                 <tbody>

@@ -17,8 +17,6 @@ class Processo {
         this.termino = 0;
         this.espera = 0;
         this.turnaround = 0;
-
-        // seq: número que preserva a ordem original do input (tie-breaker determinístico)
         this.seq = p.seq ?? p.__seq ?? 0;
     }
 }
@@ -57,7 +55,6 @@ class Simulador {
         this.totalTrocasContexto = 0;
         this.logGantt = [];
 
-        // Atribuir seq a cada processo na ordem do input (preserva P1,P2,... em empates).
         for (let i = 0; i < this.processosOriginais.length; i++) {
             this.processosOriginais[i].__seq = i;
         }
@@ -92,13 +89,10 @@ class Simulador {
         this.renderizarResultados();
     }
 
-    // Inserção estável: eventos com mesmo tempo são colocados *após* os já existentes,
-    // preservando a ordem de criação.
-    adicionarEvento(tempo, tipo, dados) {
+
+    adicionarEvento(tempo, tipo, dados) { // adiciona o evento na fila ordenada
         const evento = { tempo, tipo, dados };
         let i = 0;
-        // Usar <= garante que novos eventos com mesmo tempo sejam inseridos depois
-        // dos existentes, mantendo a ordem original de chegadas.
         while (i < this.filaDeEventos.length && this.filaDeEventos[i].tempo <= tempo) {
             i++;
         }
@@ -126,14 +120,11 @@ class Simulador {
 
 
     handleChegada(dadosProcesso) {
-        // Certifica-se de propagar seq para o Processo
         const novoDados = Object.assign({}, dadosProcesso);
         novoDados.__seq = novoDados.__seq ?? novoDados.seq ?? 0;
-
         const novoProcesso = new Processo(novoDados);
         
         if (this.algoritmo === 'CFS') {
-            // Inicialização de vruntime: use seq + tempoAtual para determinismo em empates
             novoProcesso.vruntime = this.tempoAtual + (novoProcesso.seq * 1e-6);
         }
         
@@ -148,56 +139,39 @@ class Simulador {
         }
     }
 
-    /**
-     * Manipulador: Processo terminou sua execução
-     * NOTA: NÃO chama iniciarTrocaContexto aqui — término NÃO é sobrecarga.
-     */
-    handleFimExecucao(processo) {
+    handleFimExecucao(processo) { // gerencia o fim da execução
         processo.termino = this.tempoAtual;
         
         const inicioExecucao = processo.inicio.slice(-1)[0];
         this.logarExecucaoGantt(processo, inicioExecucao, this.tempoAtual);
 
         this.processoNaCPU = null;
-        this.cpuOciosa = true; // Libera a CPU
+        this.cpuOciosa = true;
     }
 
-    /**
-     * Manipulador: Quantum do Round-Robin expirou (PREEMPÇÃO)
-     */
-    handleFimQuantum(processo) {
+    handleFimQuantum(processo) { // gerencia o quantum
         const inicioExecucao = processo.inicio.slice(-1)[0];
         this.logarExecucaoGantt(processo, inicioExecucao, this.tempoAtual);
         
         this.filaDeProntos.push(processo);
         this.processoNaCPU = null;
-        this.cpuOciosa = true; // Libera a CPU para a troca de contexto
-
-        // Inicia a troca de contexto — MOD: passa o processo que foi interrompido
+        this.cpuOciosa = true;
         this.iniciarTrocaContexto(processo);
     }
 
-    /**
-     * Inicia a sobrecarga da troca de contexto
-     * MOD: recebe opcionalmente o processo interrompido (interrompido).
-     * Se recebido, marca a sobrecarga na linha desse processo (id = processo.id).
-     * Caso contrário, preserva comportamento antigo (id = 'SC').
-     */
-    iniciarTrocaContexto(interrompido = null) {
+    iniciarTrocaContexto(interrompido = null) { // troca de contexto
         if (this.filaDeProntos.length > 0 && this.sobrecarga > 0) {
             this.totalTrocasContexto++;
-            this.cpuOciosa = false; // CPU ocupada com a sobrecarga
+            this.cpuOciosa = false;
 
             if (interrompido && interrompido.id) {
-                // MOD: registrar sobrecarga na linha do processo interrompido
                 this.logGantt.push({
                     id: interrompido.id, 
                     inicio: this.tempoAtual, 
                     fim: this.tempoAtual + this.sobrecarga, 
-                    tipo: 'sobrecarga' // Será pintado como gantt-sobrecarga (vermelho)
+                    tipo: 'sobrecarga'
                 });
             } else {
-                // fallback: bloco genérico SC (linha separada)
                 this.logGantt.push({ 
                     id: 'SC', 
                     inicio: this.tempoAtual, 
@@ -208,18 +182,12 @@ class Simulador {
 
             this.adicionarEvento(this.tempoAtual + this.sobrecarga, 'FIM_SOBRECARGA', {});
         }
-        // Se não houver sobrecarga, a CPU permanece ociosa e o loop chamará alocarCPU()
     }
     
-    /**
-     * Manipulador: A sobrecarga de contexto terminou
-     */
     handleFimSobrecarga(dados) {
-        this.cpuOciosa = true; // Libera a CPU
-        // O loop 'run' chamará alocarCPU()
+        this.cpuOciosa = true;
     }
 
-    // Helper: extrai número do id P1 -> 1; se não encontrar, retorna seq
     idNumber(proc) {
         if (!proc || !proc.id) return proc.seq ?? 0;
         const m = proc.id.match(/(\d+)$/);
@@ -227,31 +195,24 @@ class Simulador {
         return proc.seq ?? 0;
     }
 
-    // Comparador robusto com tie-breakers: prioridade, chegada, seq / idNumber
     compareBySeq(a, b) {
         return (a.seq ?? 0) - (b.seq ?? 0);
     }
 
-    /**
-     * Decide qual processo da fila de prontos irá para a CPU
-     */
     escalonarProximoProcesso() {
         if (this.filaDeProntos.length === 0) return null;
 
         let proximoProcesso;
 
         switch (this.algoritmo) {
-            case 'FIFO':
-                // Ordena por tempo de chegada; em empate, usa seq (ordem de input)
+            case 'FIFO': // ordena por chegada -> com base no seq (p1, p2, ...)
                 this.filaDeProntos.sort((a, b) => {
                     if (a.chegada !== b.chegada) return a.chegada - b.chegada;
                     return this.compareBySeq(a, b);
                 });
                 proximoProcesso = this.filaDeProntos.shift();
                 break;
-            case 'SJF':
-                // Ordena por tempo de execução TOTAL (não preemptivo).
-                // Empate por chegada, depois seq.
+            case 'SJF': // ordena por tempo de execução total -> chegada -> seq
                 this.filaDeProntos.sort((a, b) => {
                     if (a.execucaoTotal !== b.execucaoTotal) return a.execucaoTotal - b.execucaoTotal;
                     if (a.chegada !== b.chegada) return a.chegada - b.chegada;
@@ -259,12 +220,10 @@ class Simulador {
                 });
                 proximoProcesso = this.filaDeProntos.shift();
                 break;
-            case 'RR':
-                // RR preserva ordem FIFO da fila; shift é suficiente.
+            case 'RR': // preemptivo por quantum, fila circular
                 proximoProcesso = this.filaDeProntos.shift();
                 break;
-            case 'EDF':
-                // Ordena por deadline; empates por chegada, depois seq.
+            case 'EDF': // ordena por deadline mais proximo
                 this.filaDeProntos.sort((a, b) => {
                     if (a.deadline !== b.deadline) return a.deadline - b.deadline;
                     if (a.chegada !== b.chegada) return a.chegada - b.chegada;
@@ -272,8 +231,7 @@ class Simulador {
                 });
                 proximoProcesso = this.filaDeProntos.shift();
                 break;
-            case 'CFS':
-                // Ordena por vruntime; empates por prioridade (lower better?), depois seq.
+            case 'CFS': // ordena por vruntime
                 this.filaDeProntos.sort((a, b) => {
                     if (a.vruntime !== b.vruntime) return a.vruntime - b.vruntime;
                     if (a.prioridade !== b.prioridade) return a.prioridade - b.prioridade;
@@ -282,23 +240,19 @@ class Simulador {
                 proximoProcesso = this.filaDeProntos.shift();
                 break;
             default:
-                // Default: FIFO semantics
                 proximoProcesso = this.filaDeProntos.shift();
         }
         return proximoProcesso;
     }
 
-    /**
-     * Aloca a CPU a um processo, se possível
-     */
-    alocarCPU() {
+    alocarCPU() { // aloca CPU ao próximo processo
         if (!this.cpuOciosa || this.filaDeProntos.length === 0) {
             return;
         }
 
         const processo = this.escalonarProximoProcesso();
         if (!processo) {
-            this.cpuOciosa = true; // Ninguém na fila
+            this.cpuOciosa = true;
             return;
         }
 
@@ -330,13 +284,10 @@ class Simulador {
                 tempoExecucao = Math.min(processo.restante, fatiaGranular);
                 processo.restante -= tempoExecucao;
 
-                // Weight baseado na prioridade (mantive sua fórmula)
                 const w = Math.pow(1.25, processo.prioridade - 1); 
                 processo.vruntime += tempoExecucao * w;
                 
                 if (processo.restante > 0) {
-                     // Tratamos como quantum curto (fatia), re-insere na fila de prontos ao fim do quantum
-                     // mas usamos evento FIM_QUANTUM para indicar interrupção da fatia.
                      this.adicionarEvento(this.tempoAtual + tempoExecucao, 'FIM_QUANTUM', processo); 
                 } else {
                     this.adicionarEvento(this.tempoAtual + tempoExecucao, 'FIM_EXECUCAO', processo);
@@ -345,10 +296,7 @@ class Simulador {
         }
     }
     
-    /**
-     * Verifica se um novo processo deve preemptar o atual
-     */
-    devePreemptar(novoProcesso) {
+    devePreemptar(novoProcesso) { // verifica a preempsao
         if (!this.processoNaCPU) return false;
 
         switch (this.algoritmo) {
@@ -372,10 +320,6 @@ class Simulador {
         return false;
     }
 
-    /**
-     * Registra um bloco de execução no Gantt, dividindo-o se
-     * ele cruzar a deadline.
-     */
     logarExecucaoGantt(processo, inicioExecucao, fimExecucao) {
         const deadline = processo.deadline;
 
@@ -411,9 +355,6 @@ class Simulador {
         }
     }
 
-    /**
-     * Calcula métricas finais após a simulação
-     */
     calcularMetricasFinais() {
         for (const p of this.processos) {
             p.turnaround = p.termino - p.chegada;
@@ -421,11 +362,7 @@ class Simulador {
         }
     }
 
-    /**
-     * Renderiza os resultados nas tabelas e no Gantt
-     */
-    renderizarResultados() {
-        // 1. Limpa saídas anteriores
+    renderizarResultados() { // renderiza os resultados 
         const ganttContainer = document.getElementById('gantt-chart');
         const tabelaBody = document.getElementById('tabela-resultados').querySelector('tbody');
         const metricasGlobais = document.getElementById('metricas-globais');
@@ -434,12 +371,12 @@ class Simulador {
         tabelaBody.innerHTML = '';
         metricasGlobais.innerHTML = '';
 
-        // 2. Renderiza o Gráfico de Gantt (versão em quadrados)
+        // renderiza o Gráfico de Gantt
         const tempoTotal = this.tempoAtual;
         ganttContainer.innerHTML = "";
 
-        // Cria grade: cada quadrado = 1 segundo
-        const escala = 40; // tamanho do quadrado (px)
+        // cria grade: cada quadrado = 1 segundo
+        const escala = 40; // tamanho do quadrado 
         const linhas = [...new Set(this.processos.map(p => p.id))]
         .sort((a, b) => {
             const numA = parseInt(a.replace(/\D/g, "")) || 0;
@@ -447,23 +384,20 @@ class Simulador {
             return numA - numB;
         });
 
-        // linhas.push("OCIOSO"); 
         const largura = tempoTotal * escala;
         const altura = linhas.length * escala;
         ganttContainer.style.position = "relative";
         ganttContainer.style.width = largura + "px";
         ganttContainer.style.height = altura + "px";
 
-        // Cria os quadrados da tabela
+        // cria os quadrados da tabela
         for (let y = 0; y < linhas.length; y++) {
             const idProc = linhas[y];
             for (let t = 0; t < tempoTotal; t++) {
-                // Define tipo padrão
                 let tipo = "ocioso";
                 let cor = "gantt-ocioso";
                 let idTexto = "";
 
-                // Procura bloco correspondente a este tempo
                 const bloco = this.logGantt.find(l => t >= l.inicio && t < l.fim && (l.id === idProc || (idProc === "OCIOSO" && l.id === "OCIOSO")));
                 if (bloco) {
                     tipo = bloco.tipo;
@@ -471,7 +405,6 @@ class Simulador {
                     idTexto = (bloco.id !== "OCIOSO" && bloco.id !== "SC") ? bloco.id : "";
                 }
 
-                // Cria célula (quadrado)
                 const cel = document.createElement("div");
                 cel.className = `gantt-barra ${cor}`;
                 cel.style.left = (t * escala) + "px";
@@ -488,7 +421,6 @@ class Simulador {
             }
         }
 
-        // Renderiza linha da deadline sobre as barras
         this.processos.forEach(p => {
             const idx = linhas.indexOf(p.id);
             if (idx >= 0) {
@@ -502,7 +434,7 @@ class Simulador {
             }
         });
 
-        // 3. Renderiza a Tabela Final
+        // renderiza a tabela final
         this.processos.sort((a,b) => a.id.localeCompare(b.id)); 
         
         for (const p of this.processos) {
@@ -519,11 +451,11 @@ class Simulador {
                 <td>${p.termino}</td>
                 <td>${(p.espera ?? 0).toFixed(2)}</td>
                 <td>${(p.turnaround ?? 0).toFixed(2)}</td>
-                <td style="color: ${deadlineOk ? 'green' : 'red'}">${deadlineOk ? 'Sim' : 'NÃO'}</td>
+                <td style="color: ${deadlineOk ? 'green' : 'red'}">${deadlineOk ? 'Sim' : 'Não'}</td>
             `;
         }
 
-        // 4. Renderiza Métricas Globais
+        // renderiza métricas
         const mediaTurnaround = this.processos.reduce((s, p) => s + (p.turnaround ?? 0), 0) / this.processos.length;
         const mediaEspera = this.processos.reduce((s, p) => s + (p.espera ?? 0), 0) / this.processos.length;
         const throughput = this.processos.length / this.tempoAtual;
@@ -540,11 +472,9 @@ class Simulador {
     }
 }
 
-/**
- * Função principal que é chamada pelo botão
- */
+
 function iniciarSimulacao() {
-    // 1. Coletar dados da UI
+    // coletaa dados
     const algoritmo = document.getElementById('algoritmo').value;
     const quantum = parseInt(document.getElementById('quantum').value, 10);
     const sobrecarga = parseInt(document.getElementById('sobrecarga').value, 10);
@@ -553,7 +483,7 @@ function iniciarSimulacao() {
     try {
         processosInput = JSON.parse(document.getElementById('processos-input').value);
 
-        // Valida formato
+        // verifca o formato json
         if (!processosInput.processos || !Array.isArray(processosInput.processos) || processosInput.processos.length === 0) {
             alert("O JSON deve conter um array 'processos' com pelo menos um processo.");
             return;
@@ -563,7 +493,6 @@ function iniciarSimulacao() {
         return;
     }
 
-    // 2. Montar objeto de configuração
     const config = {
         algoritmo: algoritmo,
         quantum: quantum,
@@ -571,7 +500,7 @@ function iniciarSimulacao() {
         processos: processosInput.processos
     };
 
-    // 3. Criar e rodar o simulador
+    // roda o simulador
     const sim = new Simulador(config);
     sim.run();
 }
