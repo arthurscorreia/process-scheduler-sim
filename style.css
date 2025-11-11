@@ -16,10 +16,13 @@ body {
     box-shadow: 0 0 10px rgba(0,0,0,0.1);
 }
 .configuracoes {
-    flex-basis: 30%;
+    flex: 0 0 400px; 
+    min-width: 400px; 
 }
+
 .resultados {
-    flex-basis: 70%;
+    flex: 1;
+    overflow-x: auto;
 }
 label, input, select, textarea, button {
     display: block;
